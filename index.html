@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ระบบบันทึกการเข้าใช้บริการห้องสมุด</title>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -31,7 +32,10 @@
 </head>
 <body class="bg-pink-50 font-sans min-h-screen p-4 sm:p-6">
   <div class="max-w-5xl mx-auto">
-    <h1 class="text-3xl sm:text-4xl font-bold text-center text-pink-700 mb-6">ระบบบันทึกการเข้าใช้บริการห้องสมุด</h1>
+    <div class="flex justify-center mb-6">
+      <img id="logo" src="https://subrkzuuirqkghijkdab.supabase.co/storage/v1/object/public/image%20fo%20library%20project/logo/3dgifmaker20996.gif" width="150px" alt="Library Logo">
+    </div>
+    <h1 class="text-3xl sm:text-4xl font-bold text-center text-pink-700 mb-6">หอสมุดโรงเรียนแกลง "วิทยสถาวร"</h1>
     <div class="flex flex-col sm:flex-row gap-4 mb-6">
       <input type="text" id="studentIdInput" placeholder="กรอกรหัสนักเรียน (5 ตัว)" class="p-3 border border-pink-200 rounded-lg flex-1 focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white text-lg text-gray-700" maxlength="5" pattern="[0-9]*" inputmode="numeric" autofocus>
     </div>
@@ -66,9 +70,10 @@
         <thead>
           <tr class="bg-pink-100">
             <th class="p-3 text-left text-pink-700 font-semibold text-lg">รหัสนักเรียน</th>
+            <th class="p-3 text-left text-pink-700 font-semibold text-lg">หน้าชื่อ</th>
             <th class="p-3 text-left text-pink-700 font-semibold text-lg">ชื่อ</th>
             <th class="p-3 text-left text-pink-700 font-semibold text-lg">สกุล</th>
-            <th class="p-3 text-left text-pink-700 font-semibold text-lg">เวลา</th>
+            <th class="p-3 text-left text-pink-700 font-semibold text-lg">ประทับเวลา</th>
           </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -77,251 +82,326 @@
   </div>
   <footer style="color: #ffffff; background-color: #000000aa; padding: 5px; text-align: center; display: flex; justify-content: center; align-items: center; width: 100%; position: fixed; bottom: 0; left: 0;">
     ©️ <span id="yearFooter"></span>
-    <img src="https://aliyahaunjo.github.io/image/kruaun.png" width="30px;"> พัฒนาโดย ครูอั๋น ใจดี
+    <img src="https://aliyahaunjo.github.io/image/kruaun.png" width="30px" alt="Developer Logo"> พัฒนาโดย ครูอั๋น ใจดี
   </footer>
 
-  <script>
-    let studentData = [];
-    let recordedData = [];
-    let filteredData = [];
-    let isDataLoaded = false;
-    const studentIdInput = document.getElementById('studentIdInput');
-    const tableBody = document.getElementById('tableBody');
-    const studentInfoDiv = document.getElementById('studentInfo');
-    const dateFilter = document.getElementById('dateFilter');
-    let chartInstance = null;
-    const API_URL = 'https://subrkzuuirqkghijkdab.supabase.co/functions/v1/library-checking'; // Replace with your Edge Function URL
+<script>
+  let studentData = [];
+  let recordedData = [];
+  let filteredData = [];
+  let isDataLoaded = false;
+  const studentIdInput = document.getElementById('studentIdInput');
+  const tableBody = document.getElementById('tableBody');
+  const studentInfoDiv = document.getElementById('studentInfo');
+  const dateFilter = document.getElementById('dateFilter');
+  let chartInstance = null;
+  const API_URL = 'https://subrkzuuirqkghijkdab.supabase.co/functions/v1/library-checking';
 
-    // Error handling
-    function onFailure(error) {
-      console.error('Error:', error);
+  // Helper function to convert DD/MM/YYYY to YYYY-MM-DD
+  function convertToISODate(dateStr) {
+    if (!dateStr || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      console.warn(`Invalid date format: ${dateStr}`);
+      return null;
+    }
+    const [day, month, year] = dateStr.split('/');
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  // Helper function to convert YYYY-MM-DD to DD/MM/YYYY
+  function convertToThaiDate(dateStr) {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      console.warn(`Invalid ISO date format: ${dateStr}`);
+      return null;
+    }
+    const [year, month, day] = dateStr.split('-');
+    return `${day}/${month}/${year}`;
+  }
+
+  // Error handling
+  function onFailure(error, customMessage = 'เกิดข้อผิดพลาด') {
+    console.error('Error:', error);
+    Swal.fire({
+      title: 'ข้อผิดพลาด',
+      text: `${customMessage}: ${error.message}`,
+      icon: 'error',
+      confirmButtonText: 'ตกลง'
+    }).then(() => {
+      studentIdInput.value = '';
+      studentIdInput.focus();
+    });
+  }
+
+  // Load student data
+  async function loadStudentData() {
+    try {
+      const response = await fetch(`${API_URL}/students`, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      studentData = data;
+      isDataLoaded = true;
+      console.log('studentData updated:', studentData);
+      console.log('Available student IDs:', studentData.map(s => s.id));
+      return data;
+    } catch (error) {
+      isDataLoaded = false;
+      studentData = [];
+      onFailure(error, 'ไม่สามารถโหลดข้อมูลนักเรียนได้');
+      throw error;
+    }
+  }
+
+  // Load attendance data
+  async function loadAttendanceData() {
+    try {
+      const response = await fetch(`${API_URL}/attendance`, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      // Convert date field from DD/MM/YYYY to YYYY-MM-DD
+      recordedData = data.map(record => ({
+        ...record,
+        date: convertToISODate(record.date) || new Date(record.timestamp).toISOString().split('T')[0]
+      }));
+      console.log('Attendance data received:', recordedData);
+      console.log('Dates in recordedData:', recordedData.map(r => r.date));
+      return recordedData;
+    } catch (error) {
+      recordedData = [];
+      onFailure(error, 'ไม่สามารถโหลดข้อมูลการเข้างานได้');
+      throw error;
+    }
+  }
+
+  // Search student and record attendance
+  async function searchStudent() {
+    if (!isDataLoaded) {
       Swal.fire({
         title: 'ข้อผิดพลาด',
-        text: 'เกิดข้อผิดพลาด: ' + error.message,
+        text: 'ข้อมูลนักเรียนยังโหลดไม่สำเร็จ กรุณารอสักครู่',
         icon: 'error',
         confirmButtonText: 'ตกลง'
       }).then(() => {
         studentIdInput.value = '';
         studentIdInput.focus();
       });
+      return;
     }
 
-    // Load student data
-    async function loadStudentData() {
-      try {
-        const response = await fetch(`${API_URL}/students`, { method: 'GET' });
-        if (!response.ok) throw new Error('Failed to fetch student data');
-        const data = await response.json();
-        studentData = data;
-        isDataLoaded = true;
-        console.log('studentData updated:', studentData);
-        console.log('Available student IDs:', studentData.map(s => s.id));
-        return data;
-      } catch (error) {
-        isDataLoaded = false;
-        studentData = [];
-        onFailure(error);
-        throw error;
+    const id = studentIdInput.value.trim();
+    if (!id || id.length !== 5 || !/^\d{5}$/.test(id)) {
+      Swal.fire({
+        title: 'ข้อผิดพลาด',
+        text: 'กรุณากรอกรหัสนักเรียน 5 ตัวเลข',
+        icon: 'warning',
+        confirmButtonText: 'ตกลง'
+      }).then(() => {
+        studentIdInput.value = '';
+        studentIdInput.focus();
+      });
+      return;
+    }
+
+    try {
+      let student = studentData.find(s => String(s.id).trim() === id);
+      if (!student) {
+        const response = await fetch(`${API_URL}/students/${id}`, { method: 'GET' });
+        if (!response.ok) throw new Error('Student not found');
+        student = await response.json();
       }
-    }
 
-    // Load attendance data
-    async function loadAttendanceData() {
-      try {
-        const response = await fetch(`${API_URL}/attendance`, { method: 'GET' });
-        if (!response.ok) throw new Error('Failed to fetch attendance data');
-        const data = await response.json();
-        recordedData = data;
-        console.log('Attendance data received:', data);
-        return data;
-      } catch (error) {
-        recordedData = [];
-        onFailure(error);
-        throw error;
-      }
-    }
+      if (student) {
+        const now = new Date();
+        const timestamp = `${now.toLocaleDateString('th-TH')} ${now.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}`;
+        const recordedStudent = { ...student, timestamp, date: now.toISOString().split('T')[0] };
 
-    // Search student and record attendance
-    async function searchStudent() {
-      if (!isDataLoaded) {
+        const response = await fetch(`${API_URL}/attendance`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(recordedStudent)
+        });
+        if (!response.ok) throw new Error('Failed to record attendance');
+
+        recordedData.unshift(recordedStudent);
+        filterByDate();
+        updateStudentInfo(student);
         Swal.fire({
-          title: 'ข้อผิดพลาด',
-          text: 'ข้อมูลนักเรียนยังโหลดไม่สำเร็จ กรุณารอสักครู่',
-          icon: 'error',
-          confirmButtonText: 'ตกลง'
+          title: 'สำเร็จ',
+          text: `บันทึกข้อมูลของ ${student.prefix}${student.firstName} ${student.lastName} เรียบร้อยแล้ว`,
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false
         }).then(() => {
           studentIdInput.value = '';
           studentIdInput.focus();
         });
-        return;
-      }
-
-      const id = studentIdInput.value.trim();
-      if (!id || id.length !== 5 || !/^\d{5}$/.test(id)) {
+      } else {
         Swal.fire({
-          title: 'ข้อผิดพลาด',
-          text: 'กรุณากรอกรหัสนักเรียน 5 ตัวเลข',
+          title: 'ไม่พบข้อมูล',
+          text: `ไม่พบนักเรียนที่มีรหัส ${id}`,
           icon: 'warning',
           confirmButtonText: 'ตกลง'
         }).then(() => {
           studentIdInput.value = '';
           studentIdInput.focus();
         });
-        return;
       }
-
-      try {
-        let student = studentData.find(s => String(s.id).trim() === id);
-        if (!student) {
-          const response = await fetch(`${API_URL}/students/${id}`, { method: 'GET' });
-          if (!response.ok) throw new Error('Student not found');
-          student = await response.json();
-        }
-
-        if (student) {
-          const now = new Date();
-          const timestamp = `${now.toLocaleDateString('th-TH')} ${now.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}`;
-          const recordedStudent = { ...student, timestamp, date: now.toLocaleDateString('th-TH') };
-
-          const response = await fetch(`${API_URL}/attendance`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(recordedStudent)
-          });
-          if (!response.ok) throw new Error('Failed to record attendance');
-
-          recordedData.unshift(recordedStudent);
-          filterByDate();
-          updateStudentInfo(student);
-          Swal.fire({
-            title: 'สำเร็จ',
-            text: `บันทึกข้อมูลของ ${student.prefix}${student.firstName} ${student.lastName} เรียบร้อยแล้ว`,
-            icon: 'success',
-            timer: 1500,
-            showConfirmButton: false
-          }).then(() => {
-            studentIdInput.value = '';
-            studentIdInput.focus();
-          });
-        } else {
-          Swal.fire({
-            title: 'ไม่พบข้อมูล',
-            text: `ไม่พบนักเรียนที่มีรหัส ${id}`,
-            icon: 'warning',
-            confirmButtonText: 'ตกลง'
-          }).then(() => {
-            studentIdInput.value = '';
-            studentIdInput.focus();
-          });
-        }
-      } catch (error) {
-        onFailure(error);
-      }
+    } catch (error) {
+      onFailure(error, 'ไม่สามารถบันทึกข้อมูลการเข้างานได้');
     }
+  }
 
-    // Filter data by date
-    function filterByDate() {
-      const selectedDate = dateFilter.value ? new Date(dateFilter.value).toLocaleDateString('th-TH') : new Date().toLocaleDateString('th-TH');
-      filteredData = recordedData.filter(record => record.date === selectedDate);
+  // Filter data by date
+  function filterByDate() {
+    try {
+      const selectedDate = dateFilter.value; // YYYY-MM-DD
+      console.log('Selected date:', selectedDate);
+      if (!selectedDate) {
+        filteredData = recordedData;
+      } else {
+        filteredData = recordedData.filter(record => {
+          const recordDate = record.date; // YYYY-MM-DD
+          console.log(`Comparing record date: ${recordDate} with selected date: ${selectedDate}`);
+          return recordDate === selectedDate;
+        });
+      }
+      console.log('Filtered data:', filteredData);
       updateTable();
       updateStats();
+    } catch (error) {
+      console.error('Error filtering by date:', error);
+      Swal.fire({
+        title: 'ข้อผิดพลาด',
+        text: 'ไม่สามารถกรองข้อมูลตามวันที่ได้: ' + error.message,
+        icon: 'error',
+        confirmButtonText: 'ตกลง'
+      });
     }
+  }
 
-    // Update attendance table
-    function updateTable() {
-      tableBody.innerHTML = '';
+  // Update attendance table
+  function updateTable() {
+    tableBody.innerHTML = '';
+    if (filteredData.length === 0) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="p-3 text-center text-gray-700 text-base">ไม่มีข้อมูลการเข้าใช้ในวันที่เลือก</td>
+        </tr>
+      `;
+    } else {
       filteredData.forEach(record => {
         const row = document.createElement('tr');
         row.className = 'hover:bg-pink-50';
         row.innerHTML = `
           <td class="p-3 text-gray-700 text-base">${record.id}</td>
-          <td class="p-3 text-gray-700 text-base">${record.prefix}${record.firstName}</td>
+          <td class="p-3 text-gray-700 text-base">${record.prefix}</td>
+          <td class="p-3 text-gray-700 text-base">${record.firstName}</td>
           <td class="p-3 text-gray-700 text-base">${record.lastName}</td>
           <td class="p-3 text-gray-700 text-base">${record.timestamp}</td>
         `;
         tableBody.appendChild(row);
       });
     }
+  }
 
-    // Update student info
-    function updateStudentInfo(student) {
-      studentInfoDiv.innerHTML = `
-        <p class="text-base text-gray-700"><strong class="text-pink-700">รหัส:</strong> ${student.id}</p>
-        <p class="text-base text-gray-700"><strong class="text-pink-700">ชื่อ:</strong> ${student.prefix}${student.firstName} ${student.lastName}</p>
-      `;
+  // Update student info
+  function updateStudentInfo(student) {
+    studentInfoDiv.innerHTML = `
+      <p class="text-base text-gray-700"><strong class="text-pink-700">ชั้น:</strong> ${student.class}</p>
+      <p class="text-base text-gray-700"><strong class="text-pink-700">เลขที่:</strong> ${student.number}</p>
+      <p class="text-base text-gray-700"><strong class="text-pink-700">รหัส:</strong> ${student.id}</p>
+      <p class="text-base text-gray-700"><strong class="text-pink-700">ชื่อ:</strong> ${student.prefix}${student.firstName} ${student.lastName}</p>
+    `;
+  }
+
+  // Update stats and chart
+  function updateStats() {
+    const totalCount = filteredData.length;
+    const maleCount = filteredData.filter(record => record.prefix === 'นาย' || record.prefix === 'เด็กชาย').length;
+    const femaleCount = filteredData.filter(record => record.prefix === 'นางสาว' || record.prefix === 'เด็กหญิง').length;
+
+    document.getElementById('totalCount').textContent = totalCount;
+    document.getElementById('maleCount').textContent = maleCount;
+    document.getElementById('femaleCount').textContent = femaleCount;
+
+    if (chartInstance && typeof chartInstance.destroy === 'function') {
+      chartInstance.destroy();
     }
 
-    // Update stats and chart
-    function updateStats() {
-      const totalCount = filteredData.length;
-      const maleCount = filteredData.filter(record => record.prefix === 'นาย' || record.prefix === 'เด็กชาย').length;
-      const femaleCount = filteredData.filter(record => record.prefix === 'นางสาว' || record.prefix === 'เด็กหญิง').length;
-
-      document.getElementById('totalCount').textContent = totalCount;
-      document.getElementById('maleCount').textContent = maleCount;
-      document.getElementById('femaleCount').textContent = femaleCount;
-
-      if (chartInstance && typeof chartInstance.destroy === 'function') {
-        chartInstance.destroy();
-      }
-
-      const ctx = document.getElementById('attendanceChart').getContext('2d');
-      chartInstance = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: ['ชาย', 'หญิง'],
-          datasets: [{
-            data: [maleCount, femaleCount],
-            backgroundColor: ['#60A5FA', '#F472B6'],
-            borderColor: ['#ffffff', '#ffffff'],
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'top',
-              labels: {
-                color: '#4B5563',
-                font: { size: 14, family: "'Prompt', sans-serif" }
+    const ctx = document.getElementById('attendanceChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['ชาย', 'หญิง'],
+        datasets: [{
+          data: [maleCount, femaleCount],
+          backgroundColor: ['#60A5FA', '#F472B6'],
+          borderColor: ['#ffffff', '#ffffff'],
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              color: '#4B5563',
+              font: { size: 14, family: "'Prompt', sans-serif" }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const value = context.raw || 0;
+                const label = context.label || '';
+                return `${label}: ${value} คน`;
               }
             }
           }
         }
+      }
+    });
+  }
+
+  // Auto-search when 5 digits are entered
+  studentIdInput.addEventListener('input', () => {
+    const value = studentIdInput.value.trim();
+    if (value.length === 5 && /^\d{5}$/.test(value)) {
+      searchStudent();
+    }
+  });
+
+  // Restrict input to numbers
+  studentIdInput.addEventListener('keypress', (e) => {
+    const charCode = e.charCode;
+    if (charCode < 48 || charCode > 57) {
+      e.preventDefault();
+    }
+  });
+
+  window.onload = async () => {
+    try {
+      document.getElementById('yearFooter').textContent = new Date().getFullYear();
+      await Promise.all([loadStudentData(), loadAttendanceData()]);
+      dateFilter.value = new Date().toISOString().split('T')[0];
+      filterByDate();
+      studentIdInput.focus();
+    } catch (error) {
+      console.error('Error during initial data load:', error);
+      Swal.fire({
+        title: 'ข้อผิดพลาด',
+        text: `ไม่สามารถโหลดข้อมูลเริ่มต้นได้: ${error.message}`,
+        icon: 'error',
+        confirmButtonText: 'ตกลง'
       });
     }
+  };
 
-    // Auto-search when 5 digits are entered
-    studentIdInput.addEventListener('input', () => {
-      const value = studentIdInput.value.trim();
-      if (value.length === 5 && /^\d{5}$/.test(value)) {
-        searchStudent();
-      }
-    });
-
-    // Restrict input to numbers
-    studentIdInput.addEventListener('keypress', (e) => {
-      const charCode = e.charCode;
-      if (charCode < 48 || charCode > 57) {
-        e.preventDefault();
-      }
-    });
-
-    window.onload = async () => {
-      try {
-        document.getElementById('yearFooter').textContent = new Date().getFullYear();
-        await Promise.all([loadStudentData(), loadAttendanceData()]);
-        dateFilter.value = new Date().toISOString().split('T')[0];
-        filterByDate();
-        studentIdInput.focus();
-      } catch (error) {
-        console.error('Error during initial data load:', error);
-      }
-    };
-
-    dateFilter.addEventListener('change', filterByDate);
-  </script>
+  dateFilter.addEventListener('change', filterByDate);
+</script>
 </body>
 </html>
