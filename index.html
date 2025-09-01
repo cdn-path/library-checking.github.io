@@ -390,7 +390,7 @@
   // Trigger search with debounce
   studentIdInput.addEventListener('input', debounce(() => {
     searchStudent();
-  }, 500));
+  }, 1000));
 
   window.onload = async () => {
     try {
