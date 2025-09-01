@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ระบบบันทึกการเข้าใช้บริการห้องสมุด</title>
-  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2/family=Prompt:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,7 +19,7 @@
       font-size: 1.5rem !important;
     }
     .swal2-content {
-      color: #4a4a4a !important;
+      color: #4a4a !important;
       font-size: 1.125rem !important;
     }
     .swal2-confirm {
@@ -37,7 +37,7 @@
     </div>
     <h1 class="text-3xl sm:text-4xl font-bold text-center text-pink-700 mb-6">หอสมุดโรงเรียนแกลง "วิทยสถาวร"</h1>
     <div class="flex flex-col sm:flex-row gap-4 mb-6">
-      <input type="text" id="studentIdInput" placeholder="กรอกรหัสนักเรียน (5 ตัว)" class="p-3 border border-pink-200 rounded-lg flex-1 focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white text-lg text-gray-700" maxlength="5" pattern="[0-9]*" inputmode="numeric" autofocus>
+      <input type="text" id="studentIdInput" placeholder="กรอกรหัสนักเรียน" class="p-3 border border-pink-200 rounded-lg flex-1 focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white text-lg text-gray-700" autofocus>
     </div>
     <div class="flex flex-col sm:flex-row gap-4 mb-6">
       <input type="date" id="dateFilter" class="p-3 border border-pink-200 rounded-lg bg-white text-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-pink-400">
@@ -96,6 +96,7 @@
   const dateFilter = document.getElementById('dateFilter');
   let chartInstance = null;
   const API_URL = 'https://subrkzuuirqkghijkdab.supabase.co/functions/v1/library-checking';
+  let debounceTimeout = null;
 
   // Helper function to convert DD/MM/YYYY to YYYY-MM-DD
   function convertToISODate(dateStr) {
@@ -191,40 +192,51 @@
     }
 
     const id = studentIdInput.value.trim();
-    if (!id || id.length !== 5 || !/^\d{5}$/.test(id)) {
-      Swal.fire({
-        title: 'ข้อผิดพลาด',
-        text: 'กรุณากรอกรหัสนักเรียน 5 ตัวเลข',
-        icon: 'warning',
-        confirmButtonText: 'ตกลง'
-      }).then(() => {
-        studentIdInput.value = '';
-        studentIdInput.focus();
-      });
-      return;
+    if (!id) {
+      return; // Silently ignore empty input to avoid unnecessary alerts during typing
     }
 
     try {
+      console.log(`Searching for student ID: ${id}`);
       let student = studentData.find(s => String(s.id).trim() === id);
       if (!student) {
-        const response = await fetch(`${API_URL}/students/${id}`, { method: 'GET' });
-        if (!response.ok) throw new Error('Student not found');
+        const response = await fetch(`${API_URL}/students/${encodeURIComponent(id)}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Student not found');
+        }
         student = await response.json();
+        console.log(`Student fetched from API: ${JSON.stringify(student)}`);
       }
 
       if (student) {
         const now = new Date();
         const timestamp = `${now.toLocaleDateString('th-TH')} ${now.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}`;
-        const recordedStudent = { ...student, timestamp, date: now.toISOString().split('T')[0] };
+        const recordedStudent = {
+          id: student.id,
+          prefix: student.prefix || '',
+          firstName: student.firstName || '',
+          lastName: student.lastName || '',
+          timestamp,
+          date: now.toISOString().split('T')[0]
+        };
 
+        console.log(`Sending attendance data: ${JSON.stringify(recordedStudent)}`);
         const response = await fetch(`${API_URL}/attendance`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(recordedStudent)
         });
-        if (!response.ok) throw new Error('Failed to record attendance');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to record attendance');
+        }
 
-        recordedData.unshift(recordedStudent);
+        const data = await response.json();
+        recordedData.unshift(data);
         filterByDate();
         updateStudentInfo(student);
         Swal.fire({
@@ -367,21 +379,18 @@
     });
   }
 
-  // Auto-search when 5 digits are entered
-  studentIdInput.addEventListener('input', () => {
-    const value = studentIdInput.value.trim();
-    if (value.length === 5 && /^\d{5}$/.test(value)) {
-      searchStudent();
-    }
-  });
+  // Debounce function to delay search
+  function debounce(func, wait) {
+    return function executedFunction(...args) {
+      clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(() => func.apply(this, args), wait);
+    };
+  }
 
-  // Restrict input to numbers
-  studentIdInput.addEventListener('keypress', (e) => {
-    const charCode = e.charCode;
-    if (charCode < 48 || charCode > 57) {
-      e.preventDefault();
-    }
-  });
+  // Trigger search with debounce
+  studentIdInput.addEventListener('input', debounce(() => {
+    searchStudent();
+  }, 1000));
 
   window.onload = async () => {
     try {
